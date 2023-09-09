@@ -16,4 +16,4 @@ jobs:
       - name: Install
         run: yarn
       - name: Run ranking
-        run: npm run ranking
+        run: sh ./ranking.sh
