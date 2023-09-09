@@ -1,7 +1,11 @@
-name: Schedule
+name: Manual Workflow Trigger
+
 on:
-  schedule:
-    - cron: 0 0 * * *
+  workflow_dispatch:
+    inputs:
+      custom_parameter:
+        description: Custom parameter for the workflow
+        required: true
 jobs:
   schedule:
     runs-on: ubuntu-latest

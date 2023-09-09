@@ -1,9 +1,3 @@
-echo -e "\n----------Run Time:----------"
-date
-
-git pull
-node ./src/index.js
-
 git config user.name cfour
 git config user.email cfour.zhou@gmail.com
 
