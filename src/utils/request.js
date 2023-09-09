@@ -5,7 +5,7 @@ const request = axios.create({
 });
 
 request.interceptors.request.use((config) => {
-  config.headers.Authorization = `Bearer ${token}`;
+  config.headers.Authorization = `Bearer ${process.env.GH_TOKEN}`;
   return config;
 });
 
