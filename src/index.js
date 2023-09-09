@@ -25,6 +25,7 @@ const run = async () => {
   const languageMap = {};
   for (let i = 0; i < repositories.length; i += 1) {
     languageMap[languages[i]] = repositories[i].items.map((repo) => ({
+      id: repo.id,
       owner: repo.owner.login,
       name: repo.name,
       homepage: repo.homepage,
