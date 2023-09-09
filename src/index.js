@@ -3,6 +3,8 @@ const path = require('path');
 const { request } = require('./utils/request');
 const languages = require('../languages.json');
 
+require('dotenv').config();
+
 const toRepositoryObj = (repo) => ({
   id: repo.id,
   owner: {
@@ -53,11 +55,7 @@ const run = async () => {
   }
   console.log('完成：语言类排行榜');
 
-  const filepath = path.resolve(
-    process.cwd(),
-    `data/${new Date().toISOString().split('T')[0]}.json`
-  );
-
+  const filepath = path.resolve(process.cwd(), 'ranking.json');
   fs.writeFile(filepath, JSON.stringify(languageMap), 'utf-8', (err) => {
     if (err) {
       console.error('写入文件时出错：', err);
