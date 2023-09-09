@@ -5,7 +5,9 @@ const languages = require('../languages.json');
 
 const toRepositoryObj = (repo) => ({
   id: repo.id,
-  owner: repo.owner.login,
+  owner: {
+    login: repo.owner.login,
+  },
   name: repo.name,
   homepage: repo.homepage,
   topics: repo.topics,
