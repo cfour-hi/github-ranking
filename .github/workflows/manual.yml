@@ -1,5 +1,4 @@
 name: Manual Workflow Trigger
-
 on:
   workflow_dispatch:
     inputs:
@@ -25,5 +24,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
+          date
           node ./src/index.js
           ./push.sh
