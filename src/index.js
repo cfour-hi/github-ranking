@@ -5,7 +5,8 @@ const languages = require('../languages.json');
 
 require('dotenv').config();
 
-const toRepositoryObj = (repo) => ({
+const toRepositoryObj = (repo, index) => ({
+  ranking: index,
   id: repo.id,
   owner: {
     login: repo.owner.login,
