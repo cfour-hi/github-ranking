@@ -1,9 +1,9 @@
+require('dotenv').config();
+
 const fs = require('fs');
 const path = require('path');
 const { request } = require('./utils/request');
 const languages = require('../languages.json');
-
-require('dotenv').config();
 
 const toRepositoryObj = (repo, index) => ({
   ranking: index + 1,
