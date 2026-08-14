@@ -1,10 +1,6 @@
 name: Manual Workflow Trigger
 on:
   workflow_dispatch:
-    inputs:
-      custom_parameter:
-        description: Custom parameter for the workflow
-        required: true
 jobs:
   schedule:
     runs-on: ubuntu-latest

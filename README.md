@@ -62,18 +62,18 @@ curl -sL https://raw.githubusercontent.com/cfour-hi/github-ranking/main/ranking.
 
 字段说明：
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `ranking` | number | 仓库在当前榜单中的名次，从 1 开始 |
-| `id` | number | GitHub 仓库 ID |
-| `owner.login` | string | 仓库所有者的 GitHub 登录名 |
-| `name` | string | 仓库名称；完整地址可由 `https://github.com/{owner.login}/{name}` 组成 |
-| `homepage` | string \| null | 仓库配置的主页地址 |
-| `topics` | string[] | 仓库主题标签 |
-| `description` | string \| null | 仓库简介 |
-| `stargazers_count` | number | 抓取时的 Star 数 |
-| `forks_count` | number | 抓取时的 Fork 数 |
-| `language` | string \| null | GitHub 识别的主要语言 |
+| 字段               | 类型           | 说明                                                                  |
+| ------------------ | -------------- | --------------------------------------------------------------------- |
+| `ranking`          | number         | 仓库在当前榜单中的名次，从 1 开始                                     |
+| `id`               | number         | GitHub 仓库 ID                                                        |
+| `owner.login`      | string         | 仓库所有者的 GitHub 登录名                                            |
+| `name`             | string         | 仓库名称；完整地址可由 `https://github.com/{owner.login}/{name}` 组成 |
+| `homepage`         | string \| null | 仓库配置的主页地址                                                    |
+| `topics`           | string[]       | 仓库主题标签                                                          |
+| `description`      | string \| null | 仓库简介                                                              |
+| `stargazers_count` | number         | 抓取时的 Star 数                                                      |
+| `forks_count`      | number         | 抓取时的 Fork 数                                                      |
+| `language`         | string \| null | GitHub 识别的主要语言                                                 |
 
 ## 本地生成
 
@@ -112,11 +112,7 @@ node src/index.js
 编辑 [`languages.json`](./languages.json)，增加、删除或调整语言名称，然后重新运行生成命令：
 
 ```json
-[
-  "JavaScript",
-  "Python",
-  "Rust"
-]
+["JavaScript", "Python", "Rust"]
 ```
 
 语言名称会直接传给 GitHub Search API 的 `language:` 限定符，建议使用 GitHub 可识别的规范名称。输出对象会保留 `languages.json` 中的顺序。
@@ -126,7 +122,7 @@ node src/index.js
 仓库提供了两个 GitHub Actions 工作流：
 
 - [定时更新](./.github/workflows/schedule.yml)：每天 `00:00 UTC`（北京时间 `08:00`）执行；
-- [手动更新](./.github/workflows/manual.yml)：可从 GitHub Actions 页面手动触发；当前工作流要求填写 `custom_parameter`，但脚本不会使用该值。
+- [手动更新](./.github/workflows/manual.yml)：可从 GitHub Actions 页面直接手动触发。
 
 工作流需要在仓库的 Actions secrets 中配置 `GH_TOKEN`。该令牌同时用于读取 GitHub API、检出仓库以及将更新后的 `ranking.json` 推送到 `main` 分支，因此必须具备相应的仓库写入权限。
 

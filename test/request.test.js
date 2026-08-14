@@ -3,6 +3,7 @@ const test = require('node:test');
 
 const {
   GitHubRequestQueue,
+  formatRateLimit,
   getRetryDelay,
   isRateLimitError,
 } = require('../src/utils/request');
@@ -29,6 +30,7 @@ test('queues requests serially and spaces their start times', async () => {
       currentTime += milliseconds;
     },
     now: () => currentTime,
+    logger: {},
   });
 
   await Promise.all([queue.get('/one'), queue.get('/two'), queue.get('/three')]);
@@ -61,7 +63,7 @@ test('honors Retry-After before retrying a rate-limited request', async () => {
     getToken: () => 'token',
     wait: async (milliseconds) => waits.push(milliseconds),
     random: () => 0,
-    logger: { warn: (message) => warnings.push(message) },
+    logger: { warn: (message) => warnings.push(message), info: () => undefined },
   });
 
   const result = await queue.get('/retry');
@@ -70,6 +72,39 @@ test('honors Retry-After before retrying a rate-limited request', async () => {
   assert.equal(attempts, 2);
   assert.deepEqual(waits, [2000]);
   assert.equal(warnings.length, 1);
+});
+
+test('logs completion time and rate limit headers without exposing token', async () => {
+  const messages = [];
+  const queue = new GitHubRequestQueue({
+    client: {
+      get: async (_url, config) => {
+        assert.equal(config.label, undefined);
+        return {
+          data: { ok: true },
+          headers: {
+            'x-ratelimit-remaining': '29',
+            'x-ratelimit-limit': '30',
+            'x-ratelimit-resource': 'search',
+          },
+        };
+      },
+    },
+    minIntervalMs: 0,
+    getToken: () => 'secret-token',
+    logger: { info: (message) => messages.push(message) },
+  });
+
+  await queue.get('/search/repositories', { label: '语言榜 Rust' });
+
+  assert.equal(messages.length, 2);
+  assert.match(messages[0], /开始 #1 语言榜 Rust/);
+  assert.match(messages[1], /额度 29\/30（search）/);
+  assert.equal(messages.join(' ').includes('secret-token'), false);
+});
+
+test('formats no rate limit text when headers are unavailable', () => {
+  assert.equal(formatRateLimit({}), '');
 });
 
 test('uses the reset header for an exhausted primary limit', () => {
@@ -106,7 +141,7 @@ test('does not retry unrelated forbidden responses', async () => {
     minIntervalMs: 0,
     getToken: () => 'token',
     wait: async () => undefined,
-    logger: { warn: () => undefined },
+    logger: {},
   });
 
   await assert.rejects(queue.get('/forbidden'), forbidden);

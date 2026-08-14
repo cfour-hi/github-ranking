@@ -14,6 +14,18 @@ const readNonNegativeInteger = (value, fallback) => {
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
 };
 
+const formatRateLimit = (headers = {}) => {
+  const remaining = headers['x-ratelimit-remaining'];
+  const limit = headers['x-ratelimit-limit'];
+  const resource = headers['x-ratelimit-resource'];
+
+  if (remaining === undefined || limit === undefined) {
+    return '';
+  }
+
+  return `，额度 ${remaining}/${limit}${resource ? `（${resource}）` : ''}`;
+};
+
 const isRateLimitError = (error) => {
   const response = error && error.response;
   if (!response || ![403, 429].includes(response.status)) {
@@ -85,10 +97,12 @@ class GitHubRequestQueue {
     this.logger = logger;
     this.lastStartedAt = null;
     this.tail = Promise.resolve();
+    this.requestCount = 0;
   }
 
   get(url, config = {}) {
-    const task = this.tail.then(() => this.execute(url, config));
+    const requestId = (this.requestCount += 1);
+    const task = this.tail.then(() => this.execute(requestId, url, config));
 
     // A failed request must not permanently block later items in the queue.
     this.tail = task.catch(() => undefined);
@@ -108,28 +122,54 @@ class GitHubRequestQueue {
     this.lastStartedAt = this.now();
   }
 
-  async execute(url, config) {
+  log(level, message) {
+    const writer = this.logger[level] || this.logger.log;
+    if (typeof writer === 'function') {
+      writer.call(this.logger, message);
+    }
+  }
+
+  async execute(requestId, url, config) {
     const token = this.getToken();
     if (!token) {
       throw new Error('缺少 GH_TOKEN，无法调用 GitHub API。');
     }
 
+    const { label = url, ...axiosConfig } = config;
     const requestConfig = {
-      ...config,
+      ...axiosConfig,
       headers: {
-        ...(config.headers || {}),
+        ...(axiosConfig.headers || {}),
         Authorization: `Bearer ${token}`,
       },
     };
 
     for (let retryCount = 0; ; retryCount += 1) {
       await this.waitForTurn();
+      const startedAt = this.now();
+      this.log(
+        'info',
+        `[GitHub API] 开始 #${requestId} ${label}（尝试 ${retryCount + 1}）`
+      );
 
       try {
         const response = await this.client.get(url, requestConfig);
+        this.log(
+          'info',
+          `[GitHub API] 完成 #${requestId} ${label}，耗时 ${
+            this.now() - startedAt
+          }ms${formatRateLimit(response.headers)}`
+        );
         return response.data;
       } catch (error) {
         if (!isRateLimitError(error) || retryCount >= this.maxRetries) {
+          const status = error.response && error.response.status;
+          this.log(
+            'error',
+            `[GitHub API] 失败 #${requestId} ${label}${
+              status ? `，HTTP ${status}` : ''
+            }：${error.message}`
+          );
           throw error;
         }
 
@@ -139,8 +179,11 @@ class GitHubRequestQueue {
           this.now,
           this.random
         );
-        this.logger.warn(
-          `GitHub API 触发速率限制，${Math.ceil(delay / 1000)} 秒后重试（${
+        this.log(
+          'warn',
+          `[GitHub API] #${requestId} ${label} 触发速率限制，${Math.ceil(
+            delay / 1000
+          )} 秒后重试（${
             retryCount + 1
           }/${this.maxRetries}）。`
         );
@@ -162,6 +205,7 @@ const request = new GitHubRequestQueue({
 });
 
 exports.GitHubRequestQueue = GitHubRequestQueue;
+exports.formatRateLimit = formatRateLimit;
 exports.getRetryDelay = getRetryDelay;
 exports.isRateLimitError = isRateLimitError;
 exports.request = request;
