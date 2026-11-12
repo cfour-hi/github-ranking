@@ -1,0 +1,7 @@
+node_modules
+ranking.json
+pnpm-lock.yaml
+dist
+*.tmp
+.env
+.env.*

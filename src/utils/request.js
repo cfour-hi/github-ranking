@@ -2,6 +2,7 @@ const axios = require('axios');
 
 const DEFAULT_MIN_INTERVAL_MS = 2100;
 const DEFAULT_MAX_RETRIES = 3;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const SECONDARY_RATE_LIMIT_DELAY_MS = 60_000;
 const RESET_BUFFER_MS = 1000;
 const MAX_JITTER_MS = 500;
@@ -10,6 +11,12 @@ const sleep = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 const readNonNegativeInteger = (value, fallback) => {
+  // An env var that is set but empty (e.g. `GITHUB_MAX_RETRIES=`) must fall
+  // back to the default instead of silently becoming 0.
+  if (value === undefined || String(value).trim() === '') {
+    return fallback;
+  }
+
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
 };
@@ -68,6 +75,13 @@ const getRetryDelay = (error, retryCount, now, random) => {
   return SECONDARY_RATE_LIMIT_DELAY_MS * 2 ** retryCount;
 };
 
+class RequestQueueAbortedError extends Error {
+  constructor(message = '请求队列已取消。', options) {
+    super(message, options);
+    this.name = 'RequestQueueAbortedError';
+  }
+}
+
 class GitHubRequestQueue {
   constructor({
     client,
@@ -83,6 +97,7 @@ class GitHubRequestQueue {
       client ||
       axios.create({
         baseURL: 'https://api.github.com',
+        timeout: DEFAULT_REQUEST_TIMEOUT_MS,
         headers: {
           Accept: 'application/vnd.github+json',
           'X-GitHub-Api-Version': '2022-11-28',
@@ -98,15 +113,48 @@ class GitHubRequestQueue {
     this.lastStartedAt = null;
     this.tail = Promise.resolve();
     this.requestCount = 0;
+    this.aborted = false;
+    this.abortError = null;
+    this.controller = new AbortController();
   }
 
   get(url, config = {}) {
     const requestId = (this.requestCount += 1);
-    const task = this.tail.then(() => this.execute(requestId, url, config));
+    const task = this.tail.then(() => {
+      if (this.aborted) {
+        throw this.createAbortError(requestId);
+      }
+      return this.execute(requestId, url, config);
+    });
 
-    // A failed request must not permanently block later items in the queue.
-    this.tail = task.catch(() => undefined);
+    // A failed request must not block the queue forever, and the queue stops
+    // as soon as one request fails so no more API quota is wasted on a run
+    // that is already going to fail.
+    this.tail = task.catch((error) => {
+      if (!this.aborted) {
+        this.abort(error);
+        this.log('warn', '[GitHub API] 请求失败，后续请求将不再发送。');
+      }
+    });
     return task;
+  }
+
+  createAbortError(requestId, cause = this.abortError) {
+    const reason = cause && cause.message ? `：${cause.message}` : '';
+    return new RequestQueueAbortedError(
+      `请求队列已取消（#${requestId}）${reason}`,
+      { cause }
+    );
+  }
+
+  abort(error) {
+    if (this.aborted) {
+      return;
+    }
+
+    this.aborted = true;
+    this.abortError = error instanceof Error ? error : null;
+    this.controller.abort();
   }
 
   async waitForTurn() {
@@ -138,6 +186,7 @@ class GitHubRequestQueue {
     const { label = url, ...axiosConfig } = config;
     const requestConfig = {
       ...axiosConfig,
+      signal: this.controller.signal,
       headers: {
         ...(axiosConfig.headers || {}),
         Authorization: `Bearer ${token}`,
@@ -145,7 +194,16 @@ class GitHubRequestQueue {
     };
 
     for (let retryCount = 0; ; retryCount += 1) {
+      if (this.aborted) {
+        throw this.createAbortError(requestId);
+      }
+
       await this.waitForTurn();
+
+      if (this.aborted) {
+        throw this.createAbortError(requestId);
+      }
+
       const startedAt = this.now();
       this.log(
         'info',
@@ -162,6 +220,10 @@ class GitHubRequestQueue {
         );
         return response.data;
       } catch (error) {
+        if (this.aborted) {
+          throw this.createAbortError(requestId, this.abortError || error);
+        }
+
         if (!isRateLimitError(error) || retryCount >= this.maxRetries) {
           const status = error.response && error.response.status;
           this.log(
@@ -173,19 +235,12 @@ class GitHubRequestQueue {
           throw error;
         }
 
-        const delay = getRetryDelay(
-          error,
-          retryCount,
-          this.now,
-          this.random
-        );
+        const delay = getRetryDelay(error, retryCount, this.now, this.random);
         this.log(
           'warn',
           `[GitHub API] #${requestId} ${label} 触发速率限制，${Math.ceil(
             delay / 1000
-          )} 秒后重试（${
-            retryCount + 1
-          }/${this.maxRetries}）。`
+          )} 秒后重试（${retryCount + 1}/${this.maxRetries}）。`
         );
         await this.wait(delay);
       }
@@ -205,7 +260,9 @@ const request = new GitHubRequestQueue({
 });
 
 exports.GitHubRequestQueue = GitHubRequestQueue;
+exports.RequestQueueAbortedError = RequestQueueAbortedError;
 exports.formatRateLimit = formatRateLimit;
 exports.getRetryDelay = getRetryDelay;
 exports.isRateLimitError = isRateLimitError;
+exports.readNonNegativeInteger = readNonNegativeInteger;
 exports.request = request;
